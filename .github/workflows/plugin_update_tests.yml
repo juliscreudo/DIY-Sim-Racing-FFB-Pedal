@@ -1,0 +1,40 @@
+name: Plugin update integration tests
+
+on:
+  push:
+    branches: [ 'test/plugin-update-windows' ]
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Environment
+        shell: pwsh
+        run: |
+          [Environment]::OSVersion.VersionString
+          "EnableLUA: " + (Get-ItemProperty HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System).EnableLUA
+          "Admin: " + ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+
+      - name: Get the C# compiler (Roslyn)
+        shell: pwsh
+        run: |
+          Invoke-WebRequest https://api.nuget.org/v3-flatcontainer/microsoft.net.compilers.toolset/5.9.0/microsoft.net.compilers.toolset.5.9.0.nupkg -OutFile roslyn.zip
+          Expand-Archive roslyn.zip roslyn
+
+      - name: Build
+        shell: cmd
+        run: |
+          set CSC=roslyn\tasks\net472\csc.exe /nologo
+          set FW=C:\Windows\Microsoft.NET\Framework\v4.0.30319
+          mkdir build\old build\new
+          %CSC% /target:library /out:build\old\DiyFfbPedal.dll tests\PluginUpdate\FakePlugin.cs || exit /b 1
+          %CSC% /target:library /define:NEW /out:build\new\DiyFfbPedal.dll tests\PluginUpdate\FakePlugin.cs || exit /b 1
+          %CSC% /target:winexe /platform:x86 /out:build\SimHubWPF.exe /r:%FW%\WPF\PresentationFramework.dll /r:%FW%\WPF\PresentationCore.dll /r:%FW%\WPF\WindowsBase.dll /r:System.Xaml.dll /r:System.Net.Http.dll tests\PluginUpdate\FakeSimHub.cs SimHubPlugin\UIFunction\PluginUpdateHelper.cs || exit /b 1
+          %CSC% /target:exe /platform:x86 /out:build\UpdateTests.exe tests\PluginUpdate\UpdateTests.cs || exit /b 1
+
+      - name: Run
+        shell: cmd
+        run: build\UpdateTests.exe build C:\upd-tests
