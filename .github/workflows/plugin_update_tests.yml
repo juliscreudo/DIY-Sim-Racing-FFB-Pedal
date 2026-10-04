@@ -38,3 +38,14 @@ jobs:
       - name: Run
         shell: cmd
         run: build\UpdateTests.exe build C:\upd-tests
+
+      - name: Control - same tests without "start /d" (expected to show the System32 working directory)
+        shell: pwsh
+        continue-on-error: true
+        run: |
+          (Get-Content SimHubPlugin\UIFunction\PluginUpdateHelper.cs) -replace ' /d ""%~1""', '' | Set-Content build\NoStartDir.cs
+          if ((Get-Content build\NoStartDir.cs | Select-String '/d ""%~1""').Count -ne 0) { throw "replace failed" }
+          $fw = "C:\Windows\Microsoft.NET\Framework\v4.0.30319"
+          roslyn\tasks\net472\csc.exe /nologo /target:winexe /platform:x86 /out:build\SimHubWPF.exe /r:$fw\WPF\PresentationFramework.dll /r:$fw\WPF\PresentationCore.dll /r:$fw\WPF\WindowsBase.dll /r:System.Xaml.dll /r:System.Net.Http.dll tests\PluginUpdate\FakeSimHub.cs build\NoStartDir.cs
+          build\UpdateTests.exe build C:\upd-tests full
+          Get-Content "C:\upd-tests\full\Sim Hub (x86) Ünï & Co\restarted.txt"
